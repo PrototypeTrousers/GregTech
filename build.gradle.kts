@@ -67,6 +67,8 @@ val crafttweakerVersion = config["crafttweaker.version"] as String
 val jeiVersion = config["jei.version"] as String
 val topVersion = config["top.version"] as String
 val ctmVersion = config["ctm.version"] as String
+val storagedrawersVersion = config["storagedrawers.version"] as String
+
 
 val git: Git = Git.open(File("."))
 
@@ -89,6 +91,10 @@ minecraft {
 }
 
 repositories {
+    maven {
+        name = "CurseForge"
+        setUrl("https://minecraft.curseforge.com/api/maven/")
+    }
     maven {
         name = "ic2, forestry"
         setUrl("http://maven.ic2.player.to/")
@@ -117,6 +123,10 @@ repositories {
         name = "CraftTweaker Maven"
         setUrl("https://maven.blamejared.com/")
     }
+    maven {
+        name = "storagedrawers"
+        setUrl("https://dl.bintray.com/jaquadro/dev/")
+    }
 }
 
 dependencies {
@@ -130,6 +140,7 @@ dependencies {
     "deobfCompile"("mezz.jei:jei_$mcVersion:$jeiVersion")
     "deobfCompile"("mcjty.theoneprobe:TheOneProbe-$shortVersion:$shortVersion-$topVersion")
     "deobfCompile"("team.chisel.ctm:CTM:MC$mcVersion-$ctmVersion")
+    "deobfCompile"("com.jaquadro.minecraft.storagedrawers:StorageDrawers:$mcVersion-$storagedrawersVersion")
 
     "testImplementation"("junit:junit:4.13.1")
 }
