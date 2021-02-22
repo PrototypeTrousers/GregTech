@@ -9,6 +9,7 @@ import codechicken.lib.texture.TextureUtils;
 import codechicken.lib.vec.Cuboid6;
 import codechicken.lib.vec.Matrix4;
 import com.google.common.base.Preconditions;
+import com.jaquadro.minecraft.storagedrawers.api.capabilities.IItemRepository;
 import gregtech.api.GregTechAPI;
 import gregtech.api.capability.GregtechTileCapabilities;
 import gregtech.api.capability.IEnergyContainer;
@@ -38,6 +39,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.BlockPos.PooledMutableBlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
+import net.minecraftforge.common.capabilities.CapabilityInject;
 import net.minecraftforge.common.capabilities.ICapabilityProvider;
 import net.minecraftforge.common.util.Constants.NBT;
 import net.minecraftforge.fluids.FluidActionResult;
@@ -59,6 +61,8 @@ import java.util.function.Consumer;
 import static gregtech.api.util.InventoryUtils.simulateItemStackMerge;
 
 public abstract class MetaTileEntity implements ICoverable {
+    @CapabilityInject(IItemRepository.class)
+    public static Capability<IItemRepository> ITEM_REPOSITORY_CAPABILITY = null;
 
     public static final int DEFAULT_PAINTING_COLOR = 0xFFFFFF;
     public static final IndexedCuboid6 FULL_CUBE_COLLISION = new IndexedCuboid6(null, Cuboid6.full);
@@ -884,32 +888,49 @@ public abstract class MetaTileEntity implements ICoverable {
             if (tileEntity == null) {
                 continue;
             }
-            IItemHandler itemHandler = tileEntity.getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, nearbyFacing.getOpposite());
+            IItemRepository itemRepository = null;
+            IItemHandler itemHandler = null;
+            if (tileEntity.hasCapability(ITEM_REPOSITORY_CAPABILITY, nearbyFacing.getOpposite())) {
+                itemRepository = tileEntity.getCapability(ITEM_REPOSITORY_CAPABILITY, nearbyFacing.getOpposite());
+            } else if (tileEntity.hasCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, nearbyFacing.getOpposite())) {
+                itemHandler = tileEntity.getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, nearbyFacing.getOpposite());
+            }
             //use getCoverCapability so item/ore dictionary filter covers will work properly
             IItemHandler myItemHandler = getCoverCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, nearbyFacing);
-            if (itemHandler == null || myItemHandler == null) {
+            if ((itemHandler == null && itemRepository == null) || myItemHandler == null) {
                 continue;
             }
-            moveInventoryItems(myItemHandler, itemHandler);
+            if (itemRepository != null)
+                moveInventoryItems(myItemHandler, itemRepository);
+            if (itemHandler != null)
+                moveInventoryItems(myItemHandler, itemHandler);
         }
         blockPos.release();
     }
 
     public void pullItemsFromNearbyHandlers(EnumFacing... allowedFaces) {
         PooledMutableBlockPos blockPos = PooledMutableBlockPos.retain();
+        IItemRepository itemRepository = null;
+        IItemHandler itemHandler = null;
         for (EnumFacing nearbyFacing : allowedFaces) {
             blockPos.setPos(getPos()).move(nearbyFacing);
             TileEntity tileEntity = getWorld().getTileEntity(blockPos);
             if (tileEntity == null) {
                 continue;
             }
-            IItemHandler itemHandler = tileEntity.getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, nearbyFacing.getOpposite());
-            //use getCoverCapability so item/ore dictionary filter covers will work properly
+            if (tileEntity.hasCapability(ITEM_REPOSITORY_CAPABILITY, nearbyFacing.getOpposite())) {
+                itemRepository = tileEntity.getCapability(ITEM_REPOSITORY_CAPABILITY, nearbyFacing.getOpposite());
+            } else if (tileEntity.hasCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, nearbyFacing.getOpposite())) {
+                itemHandler = tileEntity.getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, nearbyFacing.getOpposite());
+            }
             IItemHandler myItemHandler = getCoverCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY, nearbyFacing);
-            if (itemHandler == null || myItemHandler == null) {
+            if ((itemHandler == null && itemRepository == null) || myItemHandler == null) {
                 continue;
             }
-            moveInventoryItems(itemHandler, myItemHandler);
+            if (itemRepository != null)
+                moveInventoryItems(itemRepository,myItemHandler);
+            if (itemHandler != null)
+                moveInventoryItems(itemHandler,myItemHandler);
         }
         blockPos.release();
     }
@@ -924,6 +945,38 @@ public abstract class MetaTileEntity implements ICoverable {
             int amountToInsert = sourceStack.getCount() - remainder.getCount();
             if (amountToInsert > 0) {
                 sourceStack = sourceInventory.extractItem(srcIndex, amountToInsert, false);
+                ItemHandlerHelper.insertItemStacked(targetInventory, sourceStack, false);
+            }
+        }
+    }
+
+    protected static void moveInventoryItems(IItemHandler sourceInventory, IItemRepository targetInventory) {
+        for (int srcIndex = 0; srcIndex < sourceInventory.getSlots(); srcIndex++) {
+            ItemStack sourceStack = sourceInventory.extractItem(srcIndex, Integer.MAX_VALUE, true);
+            if (sourceStack.isEmpty()) {
+                continue;
+            }
+            ItemStack remainder = targetInventory.insertItem(sourceStack, true);
+            int amountToInsert = sourceStack.getCount() - remainder.getCount();
+            if (amountToInsert > 0) {
+                sourceStack = sourceInventory.extractItem(srcIndex, amountToInsert, false);
+                targetInventory.insertItem(sourceStack, false);;
+            }
+        }
+    }
+
+    protected static void moveInventoryItems( IItemRepository sourceInventory, IItemHandler targetInventory) {
+        for( IItemRepository.ItemRecord record : sourceInventory.getAllItems() )
+        {
+            ItemStack sourceStack = sourceInventory.extractItem( record.itemPrototype, Integer.MAX_VALUE, true );
+            if( !sourceStack.isEmpty() )
+            {
+                break;
+            }
+            ItemStack remainder = ItemHandlerHelper.insertItemStacked(targetInventory, sourceStack, true);
+            int amountToInsert = sourceStack.getCount() - remainder.getCount();
+            if (amountToInsert > 0) {
+                sourceStack = sourceInventory.extractItem( record.itemPrototype, amountToInsert, false);
                 ItemHandlerHelper.insertItemStacked(targetInventory, sourceStack, false);
             }
         }
