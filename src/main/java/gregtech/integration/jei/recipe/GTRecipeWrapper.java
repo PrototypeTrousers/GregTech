@@ -1,6 +1,5 @@
 package gregtech.integration.jei.recipe;
 
-import codechicken.lib.util.ItemNBTUtils;
 import gregtech.api.recipes.CountableIngredient;
 import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.Recipe.ChanceEntry;
@@ -13,13 +12,9 @@ import mezz.jei.api.recipe.IRecipeWrapper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.FluidStack;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class GTRecipeWrapper implements IRecipeWrapper {
@@ -27,6 +22,8 @@ public class GTRecipeWrapper implements IRecipeWrapper {
     private static final int lineHeight = 10;
     private final RecipeMap<?> recipeMap;
     private final Recipe recipe;
+    private final Map<Object,ChanceEntry> chanceEntryMap = new HashMap<>(1,1f);
+    private final Map<Object,Boolean> notConsumedMap = new HashMap<>(1,1f);
 
     public GTRecipeWrapper(RecipeMap<?> recipeMap, Recipe recipe) {
         this.recipeMap = recipeMap;
@@ -45,7 +42,7 @@ public class GTRecipeWrapper implements IRecipeWrapper {
                     .collect(Collectors.toList());
                 ingredientValues.forEach(stack -> {
                     if (ingredient.getCount() == 0) {
-                        ItemNBTUtils.setBoolean(stack, "not_consumed", true);
+                        notConsumedMap.put(stack,true);
                         stack.setCount(1);
                     } else stack.setCount(ingredient.getCount());
                 });
@@ -60,9 +57,7 @@ public class GTRecipeWrapper implements IRecipeWrapper {
                 .collect(Collectors.toList());
             recipeInputs.forEach(stack -> {
                 if (stack.amount == 0) {
-                    if (stack.tag == null)
-                        stack.tag = new NBTTagCompound();
-                    stack.tag.setBoolean("not_consumed", true);
+                    notConsumedMap.put(stack,true);
                     stack.amount = 1;
                 }
             });
@@ -72,14 +67,14 @@ public class GTRecipeWrapper implements IRecipeWrapper {
         if (!recipe.getOutputs().isEmpty() || !recipe.getChancedOutputs().isEmpty()) {
             List<ItemStack> recipeOutputs = recipe.getOutputs()
                 .stream().map(ItemStack::copy).collect(Collectors.toList());
-            List<ChanceEntry> chancedOutputs = recipe.getChancedOutputs();
-            for (ChanceEntry chancedEntry : chancedOutputs) {
+            List<ItemStack> chancedOutputs = new ArrayList<>();
+            for (ChanceEntry chancedEntry : recipe.getChancedOutputs()) {
                 ItemStack chancedStack = chancedEntry.getItemStack();
-                ItemNBTUtils.setInteger(chancedStack, "chance", chancedEntry.getChance());
-                ItemNBTUtils.setInteger(chancedStack, "boost_per_tier", chancedEntry.getBoostPerTier());
-                recipeOutputs.add(chancedStack);
+                chanceEntryMap.put(chancedStack,chancedEntry);
+                chancedOutputs.add(chancedStack);
             }
-            recipeOutputs.sort(Comparator.comparing(stack -> ItemNBTUtils.getInteger(stack, "chance")));
+            chancedOutputs.sort(Comparator.comparing(o -> chanceEntryMap.get(o).getChance()).reversed());
+            recipeOutputs.addAll(chancedOutputs);
             ingredients.setOutputs(VanillaTypes.ITEM, recipeOutputs);
         }
 
@@ -91,21 +86,16 @@ public class GTRecipeWrapper implements IRecipeWrapper {
     }
 
     public void addTooltip(int slotIndex, boolean input, Object ingredient, List<String> tooltip) {
-        NBTTagCompound tagCompound;
-        if (ingredient instanceof ItemStack) {
-            tagCompound = ((ItemStack) ingredient).getTagCompound();
-        } else if (ingredient instanceof FluidStack) {
-            tagCompound = ((FluidStack) ingredient).tag;
+        if (ingredient instanceof ItemStack || ingredient instanceof FluidStack) {
+            if (chanceEntryMap.containsKey(ingredient)) {
+                String chanceString = Recipe.formatChanceValue(chanceEntryMap.get(ingredient).getChance());
+                String boostString = Recipe.formatChanceValue(chanceEntryMap.get(ingredient).getBoostPerTier());
+                tooltip.add(I18n.format("gregtech.recipe.chance", chanceString, boostString));
+            } else if (notConsumedMap.containsKey(ingredient)) {
+                tooltip.add(I18n.format("gregtech.recipe.not_consumed"));
+            }
         } else {
             throw new IllegalArgumentException("Unknown ingredient type: " + ingredient.getClass());
-        }
-        if (tagCompound != null && tagCompound.hasKey("chance")) {
-            String chanceString = Recipe.formatChanceValue(tagCompound.getInteger("chance"));
-            String boostString = Recipe.formatChanceValue(tagCompound.getInteger("boost_per_tier"));
-            tooltip.add(I18n.format("gregtech.recipe.chance", chanceString, boostString));
-
-        } else if (tagCompound != null && tagCompound.hasKey("not_consumed")) {
-            tooltip.add(I18n.format("gregtech.recipe.not_consumed"));
         }
     }
 
