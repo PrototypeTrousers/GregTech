@@ -15,8 +15,10 @@ import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.MetaTileEntityHolder;
 import gregtech.api.metatileentity.multiblock.IMultiblockAbilityPart;
 import gregtech.api.metatileentity.multiblock.MultiblockAbility;
+import gregtech.api.metatileentity.multiblock.MultiblockControllerBase;
 import gregtech.api.render.SimpleOverlayRenderer;
 import gregtech.api.render.Textures;
+import gregtech.api.capability.impl.DirtyableFluidTank;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
@@ -101,11 +103,19 @@ public class MetaTileEntityFluidHatch extends MetaTileEntityMultiblockPart imple
     @Override
     protected void initializeInventory() {
         super.initializeInventory();
-        FluidTank fluidTank = new FluidTank(getInventorySize());
+        FluidTank fluidTank = new DirtyableFluidTank(getInventorySize(),getController(),isExportHatch);
         this.fluidTankHandler = new FluidTankList(false, fluidTank);
         this.exportFluids = fluidTankHandler;
         this.importFluids = isExportHatch ? new FluidTankList(false) : fluidTankHandler;
         this.fluidInventory = fluidTankHandler;
+    }
+
+    @Override
+    public void addEntityToDirtyableHandlers(MetaTileEntity metaTileEntity) {
+        DirtyableFluidTank handler;
+        handler = (DirtyableFluidTank) getExportFluids().getFluidTanks().get(0);
+        handler.addEntityToSetDirty(metaTileEntity);
+        handler.dirtyEntity(isExportHatch);
     }
 
     @Override

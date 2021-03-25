@@ -97,35 +97,28 @@ public class MetaTileEntityMultiFurnace extends RecipeMapMultiblockController {
             long maxVoltage = getMaxVoltage();
             Recipe currentRecipe = null;
             IItemHandlerModifiable importInventory = getInputInventory();
-            IMultipleTankHandler importFluids = getInputTank();
-
-            if (this.isOutputsFull) {
-                IItemHandlerModifiable exportInventory = getOutputInventory();
-                IMultipleTankHandler exportFluids = getOutputTank();
-                if (hasMachineOutputChanged(exportInventory, exportFluids)) {
-                    this.isOutputsFull = false;
-                }
-            }
 
             //inverse of logic in normal AbstractRecipeLogic
             //for MultiSmelter, we can reuse previous recipe if inputs didn't change
             //otherwise, we need to recompute it for new ingredients
             //but technically, it means we can cache multi smelter recipe, but changing inputs have more priority
-            if (checkRecipeInputsDirty(importInventory, importFluids) || this.forceRecipeRecheck) {
-                this.forceRecipeRecheck = false;
-                //else, try searching new recipe for given inputs
+            if (metaTileEntity.isInputsDirty()) {
+                metaTileEntity.setInputsDirty(false);
+                //Inputs changed, try searching new recipe for given inputs
                 currentRecipe = findRecipe(maxVoltage, importInventory, importFluids);
-                if (currentRecipe != null) {
-                    this.previousRecipe = currentRecipe;
-                }
-            } else if (!invalidInputsForRecipes && !this.isOutputsFull) {
-                if (previousRecipe != null && previousRecipe.matches(false, importInventory, importFluids)) {
-                    //if previous recipe still matches inputs, try to use it
-                    currentRecipe = previousRecipe;
-                }
+            } else if (previousRecipe != null && previousRecipe.matches(false, importInventory, importFluids)) {
+                //if previous recipe still matches inputs, try to use it
+                currentRecipe = previousRecipe;
             }
+            if ( currentRecipe != null)
+                // replace old recipe with new one
+                this.previousRecipe = currentRecipe;
+
+            // proceed if we have a usable recipe.
             if (currentRecipe != null && setupAndConsumeRecipeInputs(currentRecipe)) {
                 setupRecipe(currentRecipe);
+                //avoid new recipe lookup caused by item consumption from input
+                metaTileEntity.setInputsDirty(false);
             }
         }
 

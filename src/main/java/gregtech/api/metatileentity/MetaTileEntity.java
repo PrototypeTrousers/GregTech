@@ -86,6 +86,8 @@ public abstract class MetaTileEntity implements ICoverable {
     protected boolean isFragile = false;
 
     private CoverBehavior[] coverBehaviors = new CoverBehavior[6];
+    protected boolean outputDirty;
+    protected boolean inputDirty;
 
     public MetaTileEntity(ResourceLocation metaTileEntityId) {
         this.metaTileEntityId = metaTileEntityId;
@@ -234,6 +236,22 @@ public abstract class MetaTileEntity implements ICoverable {
 
     public final String getMetaFullName() {
         return getMetaName() + ".name";
+    }
+
+    public final void setInputsDirty(boolean dirty) {
+        this.inputDirty = dirty;
+    }
+
+    public final boolean isInputsDirty() {
+        return this.inputDirty;
+    }
+
+    public final void setOutputsDirty(boolean dirty) {
+        this.outputDirty = dirty;
+    }
+
+    public final boolean isOutputsDirty() {
+        return this.outputDirty;
     }
 
     /**
