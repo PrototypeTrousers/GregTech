@@ -7,10 +7,8 @@ import java.util.Iterator;
 
 public interface IDirtyableHandler {
 
-    HashSet<MetaTileEntity> entityToSetDirty = new HashSet<>();
-
     default void dirtyEntity(boolean isExport) {
-        Iterator<MetaTileEntity> iterator = entityToSetDirty.iterator();
+        Iterator<MetaTileEntity> iterator = getDirtiables().iterator();
         while (iterator.hasNext()) {
             MetaTileEntity mte = iterator.next();
             if (mte != null && mte.isValid()) {
@@ -22,7 +20,9 @@ public interface IDirtyableHandler {
         }
     }
 
+    HashSet<MetaTileEntity> getDirtiables();
+
     default void addEntityToSetDirty(MetaTileEntity metaTileEntity) {
-        this.entityToSetDirty.add(metaTileEntity);
+        getDirtiables().add(metaTileEntity);
     }
 }

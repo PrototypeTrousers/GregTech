@@ -6,10 +6,10 @@ import net.minecraftforge.items.IItemHandlerModifiable;
 import net.minecraftforge.items.ItemStackHandler;
 
 import java.util.HashSet;
-import java.util.Iterator;
 
 public class DirtyableItemStackHandler extends ItemStackHandler implements IItemHandlerModifiable, IDirtyableHandler {
 
+    HashSet<MetaTileEntity> entityToSetDirty = new HashSet<>();
     private final boolean isExport;
 
     public DirtyableItemStackHandler(int slots, MetaTileEntity entityToSetDirty, boolean isExport) {
@@ -22,5 +22,10 @@ public class DirtyableItemStackHandler extends ItemStackHandler implements IItem
     public void onContentsChanged(int slot) {
         super.onContentsChanged(slot);
         dirtyEntity(isExport);
+    }
+
+    @Override
+    public HashSet<MetaTileEntity> getDirtiables() {
+        return this.entityToSetDirty;
     }
 }

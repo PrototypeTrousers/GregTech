@@ -1,5 +1,6 @@
 package gregtech.api.recipes;
 
+import codechicken.lib.inventory.ItemKey;
 import crafttweaker.annotations.ZenRegister;
 import crafttweaker.api.item.IItemStack;
 import crafttweaker.api.liquid.ILiquidStack;
@@ -21,10 +22,10 @@ import gregtech.api.recipes.crafttweaker.CTRecipe;
 import gregtech.api.recipes.crafttweaker.CTRecipeBuilder;
 import gregtech.api.unification.material.type.Material;
 import gregtech.api.unification.ore.OrePrefix;
-import gregtech.api.util.EnumValidationResult;
-import gregtech.api.util.GTLog;
-import gregtech.api.util.GTUtility;
-import gregtech.api.util.ValidationResult;
+import gregtech.api.util.*;
+import gregtech.api.util.ItemStackKey;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.fluids.Fluid;
@@ -60,7 +61,8 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
     protected TextureArea progressBarTexture;
     protected MoveType moveType;
 
-    private final Map<FluidKey, Collection<Recipe>> recipeFluidMap = new HashMap<>();
+    private final Object2ObjectOpenHashMap<FluidKey, Collection<Recipe>> recipeFluidMap = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<ItemStackKey,Collection<Recipe>> recipeItemMap = new Object2ObjectOpenHashMap<>();
     private final Collection<Recipe> recipeList = new ArrayList<>();
 
     public RecipeMap(String unlocalizedName,
@@ -163,8 +165,15 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
         Recipe recipe = validationResult.getResult();
         recipeList.add(recipe);
 
+        for (CountableIngredient stack : recipe.getInputs()){
+            ItemStack[] stacks = stack.getIngredient().getMatchingStacks();
+            for (ItemStack itemStack : stacks){
+                recipeItemMap.computeIfAbsent(new ItemStackKey(itemStack),k -> new ObjectOpenHashSet<>(1)).add(recipe);
+            }
+        }
+
         for (FluidStack fluid : recipe.getFluidInputs()) {
-            recipeFluidMap.computeIfAbsent(new FluidKey(fluid), k -> new HashSet<>(1)).add(recipe);
+            recipeFluidMap.computeIfAbsent(new FluidKey(fluid), k -> new ObjectOpenHashSet<>(1)).add(recipe);
         }
     }
 
@@ -174,6 +183,8 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
             //also iterate trough fluid mappings and remove recipe from them
             recipeFluidMap.values().forEach(fluidMap ->
                 fluidMap.removeIf(fluidRecipe -> fluidRecipe == recipe));
+            recipeItemMap.values().forEach(itemMap ->
+                    itemMap.removeIf(itemRecipe -> itemRecipe == recipe));
             return true;
         }
         return false;
@@ -264,9 +275,14 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
 
     @Nullable
     private Recipe findByInputs(long voltage, List<ItemStack> inputs, List<FluidStack> fluidInputs, MatchingMode matchingMode) {
-        for (Recipe recipe : recipeList) {
-            if (recipe.matches(false, inputs, fluidInputs, matchingMode)) {
-                return voltage >= recipe.getEUt() ? recipe : null;
+        for (ItemStack stack : inputs){
+            if (stack.isEmpty()) continue;
+            Collection<Recipe> recipes = recipeItemMap.get(new ItemStackKey(stack));
+            if (recipes == null) continue;
+            for (Recipe tmpRecipe : recipes){
+                if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                    return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+                }
             }
         }
         return null;
