@@ -1,17 +1,17 @@
 package gregtech.api.capability.impl;
 
-import gregtech.api.capability.IDirtyableHandler;
+import gregtech.api.capability.INotifiableHandler;
 import gregtech.api.metatileentity.MetaTileEntity;
 import net.minecraftforge.fluids.FluidTank;
 
 import java.util.HashSet;
 
-public class DirtyableFluidTank extends FluidTank implements IDirtyableHandler {
+public class NotifiableFluidTank extends FluidTank implements INotifiableHandler {
 
     HashSet<MetaTileEntity> entityToSetDirty = new HashSet<>();
     private final boolean isExport;
 
-    public DirtyableFluidTank(int capacity, MetaTileEntity entityToSetDirty, boolean isExport) {
+    public NotifiableFluidTank(int capacity, MetaTileEntity entityToSetDirty, boolean isExport) {
         super(capacity);
         this.entityToSetDirty.add(entityToSetDirty);
         this.isExport = isExport;
@@ -20,11 +20,11 @@ public class DirtyableFluidTank extends FluidTank implements IDirtyableHandler {
     @Override
     protected void onContentsChanged() {
         super.onContentsChanged();
-        dirtyEntity(isExport);
+        notifyMetaTileEntitiesOfChange(isExport);
     }
 
     @Override
-    public HashSet<MetaTileEntity> getDirtiables(){
+    public HashSet<MetaTileEntity> getNotifiableMetaTileEntities(){
         return this.entityToSetDirty;
     }
 }

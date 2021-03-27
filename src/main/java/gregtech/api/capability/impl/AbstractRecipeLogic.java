@@ -124,12 +124,8 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable 
     }
 
     boolean hasPowerToRun() {
-        long maxEnergy = getEnergyCapacity();
         long currentEnergy = getEnergyStored();
-        if (maxEnergy > 0 && currentEnergy == 0) return false;
-        else if (maxEnergy > 0 && currentEnergy < lastEnergyStored) return false;
-        else if ( maxEnergy == 0 ) return true;
-        return true;
+        return currentEnergy > lastEnergyStored;
     }
 
     boolean canFitNewOutputs() {

@@ -1,6 +1,5 @@
 package gregtech.api.recipes;
 
-import codechicken.lib.inventory.ItemKey;
 import crafttweaker.annotations.ZenRegister;
 import crafttweaker.api.item.IItemStack;
 import crafttweaker.api.liquid.ILiquidStack;
@@ -275,13 +274,27 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
 
     @Nullable
     private Recipe findByInputs(long voltage, List<ItemStack> inputs, List<FluidStack> fluidInputs, MatchingMode matchingMode) {
-        for (ItemStack stack : inputs){
+        HashSet<Recipe> iteratedRecipes = new HashSet<>();
+        int uniqueStacks = 0;
+        for (ItemStack stack : inputs) {
             if (stack.isEmpty()) continue;
+            uniqueStacks++;
             Collection<Recipe> recipes = recipeItemMap.get(new ItemStackKey(stack));
             if (recipes == null) continue;
-            for (Recipe tmpRecipe : recipes){
-                if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
-                    return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+            for (Recipe tmpRecipe : recipes) {
+                if (iteratedRecipes.add(tmpRecipe)) {
+                    if (tmpRecipe.getInputs().size() == uniqueStacks) {
+                        if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                            return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+                        }
+                    }
+                }
+            }
+            for (Recipe tmpRecipe : iteratedRecipes) {
+                if (tmpRecipe.getInputs().size() > uniqueStacks) {
+                    if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                        return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+                    }
                 }
             }
         }

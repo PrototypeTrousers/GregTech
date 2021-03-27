@@ -1,16 +1,16 @@
 package gregtech.api.capability.impl;
 
-import gregtech.api.capability.IDirtyableHandler;
+import gregtech.api.capability.INotifiableHandler;
 import gregtech.api.metatileentity.MetaTileEntity;
 
 import java.util.HashSet;
 
-public class DirtyableFilteredFluidHandler extends FilteredFluidHandler implements IDirtyableHandler {
+public class NotifiableFilteredFluidHandler extends FilteredFluidHandler implements INotifiableHandler {
 
     HashSet<MetaTileEntity> entityToSetDirty = new HashSet<>();
     private final boolean isExport;
 
-    public DirtyableFilteredFluidHandler(int capacity, MetaTileEntity entityToSetDirty, boolean isExport) {
+    public NotifiableFilteredFluidHandler(int capacity, MetaTileEntity entityToSetDirty, boolean isExport) {
         super(capacity);
         this.entityToSetDirty.add(entityToSetDirty);
         this.isExport = isExport;
@@ -19,11 +19,11 @@ public class DirtyableFilteredFluidHandler extends FilteredFluidHandler implemen
     @Override
     protected void onContentsChanged() {
         super.onContentsChanged();
-        dirtyEntity(isExport);
+        notifyMetaTileEntitiesOfChange(isExport);
     }
 
     @Override
-    public HashSet<MetaTileEntity> getDirtiables() {
+    public HashSet<MetaTileEntity> getNotifiableMetaTileEntities() {
         return this.entityToSetDirty;
     }
 }

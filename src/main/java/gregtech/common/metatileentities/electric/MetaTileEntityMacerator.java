@@ -9,7 +9,7 @@ import gregtech.api.recipes.Recipe;
 import gregtech.api.recipes.RecipeMap;
 import gregtech.api.render.OrientedOverlayRenderer;
 import gregtech.api.util.GTUtility;
-import gregtech.api.capability.impl.DirtyableItemStackHandler;
+import gregtech.api.capability.impl.NotifiableItemStackHandler;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.items.IItemHandlerModifiable;
 
@@ -39,7 +39,7 @@ public class MetaTileEntityMacerator extends SimpleMachineMetaTileEntity {
 
     @Override
     protected IItemHandlerModifiable createExportItemHandler() {
-        return new DirtyableItemStackHandler(outputAmount,this,true);
+        return new NotifiableItemStackHandler(outputAmount,this,true);
     }
 
     @Override
