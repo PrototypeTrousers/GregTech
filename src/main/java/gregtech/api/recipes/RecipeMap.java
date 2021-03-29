@@ -23,6 +23,7 @@ import gregtech.api.unification.material.type.Material;
 import gregtech.api.unification.ore.OrePrefix;
 import gregtech.api.util.*;
 import gregtech.api.util.ItemStackKey;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.client.resources.I18n;
@@ -62,6 +63,9 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
 
     private final Object2ObjectOpenHashMap<FluidKey, Collection<Recipe>> recipeFluidMap = new Object2ObjectOpenHashMap<>();
     private final Object2ObjectOpenHashMap<ItemStackKey,Collection<Recipe>> recipeItemMap = new Object2ObjectOpenHashMap<>();
+    private final Object2IntOpenHashMap<Recipe> recipeUniqueInputs = new Object2IntOpenHashMap<>();
+    private final Object2IntOpenHashMap<Recipe> recipeUniqueFluidInputs = new Object2IntOpenHashMap<>();
+
     private final Collection<Recipe> recipeList = new ArrayList<>();
 
     public RecipeMap(String unlocalizedName,
@@ -164,12 +168,18 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
         Recipe recipe = validationResult.getResult();
         recipeList.add(recipe);
 
-        for (CountableIngredient stack : recipe.getInputs()){
-            ItemStack[] stacks = stack.getIngredient().getMatchingStacks();
+        for (CountableIngredient countableIngredient : recipe.getInputs()){
+            ItemStack[] stacks = countableIngredient.getIngredient().getMatchingStacks();
             for (ItemStack itemStack : stacks){
                 recipeItemMap.computeIfAbsent(new ItemStackKey(itemStack),k -> new ObjectOpenHashSet<>(1)).add(recipe);
             }
         }
+
+        if (recipe.getInputs().size() > 0)
+            recipeUniqueInputs.putIfAbsent(recipe, recipe.getUniqueInputsCount());
+
+        if (recipe.getFluidInputs().size() > 0)
+            recipeUniqueFluidInputs.putIfAbsent(recipe, recipe.getUniqueFluidInputsCount());
 
         for (FluidStack fluid : recipe.getFluidInputs()) {
             recipeFluidMap.computeIfAbsent(new FluidKey(fluid), k -> new ObjectOpenHashSet<>(1)).add(recipe);
@@ -184,6 +194,7 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
                 fluidMap.removeIf(fluidRecipe -> fluidRecipe == recipe));
             recipeItemMap.values().forEach(itemMap ->
                     itemMap.removeIf(itemRecipe -> itemRecipe == recipe));
+            recipeUniqueInputs.remove(recipe,recipeUniqueInputs.getInt(recipe));
             return true;
         }
         return false;
@@ -250,11 +261,7 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
         if (minInputs > 0 && GTUtility.amountOfNonEmptyStacks(inputs) < minInputs) {
             return null;
         }
-        if (maxInputs > 0) {
-            return findByInputs(voltage, inputs, fluidInputs, matchingMode);
-        } else {
-            return findByFluidInputs(voltage, inputs, fluidInputs, matchingMode);
-        }
+        return findByInputs(voltage, inputs, fluidInputs, matchingMode);
     }
 
     @Nullable
@@ -275,6 +282,22 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
     @Nullable
     private Recipe findByInputs(long voltage, List<ItemStack> inputs, List<FluidStack> fluidInputs, MatchingMode matchingMode) {
         HashSet<Recipe> iteratedRecipes = new HashSet<>();
+        int uniqueFluidStacks = 0;
+        for (FluidStack fluid : fluidInputs) {
+            if (fluid == null) continue;
+            uniqueFluidStacks++;
+            Collection<Recipe> recipes = recipeFluidMap.get(new FluidKey(fluid));
+            if (recipes == null) continue;
+            for (Recipe tmpRecipe : recipes) {
+                if (recipeUniqueFluidInputs.getInt(tmpRecipe) == uniqueFluidStacks) {
+                    if (iteratedRecipes.add(tmpRecipe)) {
+                        if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                            return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+                        }
+                    }
+                }
+            }
+        }
         int uniqueStacks = 0;
         for (ItemStack stack : inputs) {
             if (stack.isEmpty()) continue;
@@ -282,18 +305,11 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
             Collection<Recipe> recipes = recipeItemMap.get(new ItemStackKey(stack));
             if (recipes == null) continue;
             for (Recipe tmpRecipe : recipes) {
-                if (iteratedRecipes.add(tmpRecipe)) {
-                    if (tmpRecipe.getInputs().size() == uniqueStacks) {
+                if (recipeUniqueInputs.getInt(tmpRecipe) == uniqueStacks) {
+                    if (iteratedRecipes.add(tmpRecipe)) {
                         if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
                             return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
                         }
-                    }
-                }
-            }
-            for (Recipe tmpRecipe : iteratedRecipes) {
-                if (tmpRecipe.getInputs().size() > uniqueStacks) {
-                    if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
-                        return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
                     }
                 }
             }

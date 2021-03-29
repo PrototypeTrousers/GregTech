@@ -4,8 +4,11 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import gregtech.api.capability.IMultipleTankHandler;
 import gregtech.api.util.GTUtility;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.crafting.Ingredient;
 import net.minecraft.util.NonNullList;
+import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.items.IItemHandlerModifiable;
 import org.apache.commons.lang3.Validate;
@@ -76,6 +79,42 @@ public class Recipe {
         this.hidden = hidden;
         //sort input elements in descending order (i.e not consumables inputs are last)
         this.inputs.sort(Comparator.comparing(CountableIngredient::getCount).reversed());
+    }
+
+    public int getUniqueInputsCount() {
+        Object2ObjectOpenHashMap<Ingredient, Integer> IngredientCountMap = new Object2ObjectOpenHashMap<>();
+        if (this.inputs.size() > 0) {
+            for (CountableIngredient stack : this.inputs) {
+                ItemStack[] stacks = stack.getIngredient().getMatchingStacks();
+                if (stacks.length > 0) {
+                    if (!IngredientCountMap.containsKey(stack.getIngredient())) {
+                        IngredientCountMap.put(stack.getIngredient(), stacks[0].getCount());
+                    } else {
+                        int ing = IngredientCountMap.get(stack.getIngredient()) + stacks[0].getCount();
+                        IngredientCountMap.put(stack.getIngredient(), ing);
+                    }
+                }
+            }
+        }
+        return IngredientCountMap.size();
+    }
+
+    public int getUniqueFluidInputsCount() {
+        Object2ObjectOpenHashMap<Fluid, Integer> FluidCountMap = new Object2ObjectOpenHashMap<>();
+        if (this.fluidInputs.size() > 0) {
+            for (FluidStack fluidStack : this.fluidInputs) {
+                Fluid fluid = fluidStack.getFluid();
+                if (fluid != null) {
+                    if (!FluidCountMap.containsKey(fluid)) {
+                        FluidCountMap.put(fluid, fluidStack.amount);
+                    } else {
+                        int ing = FluidCountMap.get(fluid) + fluidStack.amount;
+                        FluidCountMap.put(fluid, ing);
+                    }
+                }
+            }
+        }
+        return FluidCountMap.size();
     }
 
     public final boolean matches(boolean consumeIfSuccessful, IItemHandlerModifiable inputs, IMultipleTankHandler fluidInputs, MatchingMode matchingMode) {
