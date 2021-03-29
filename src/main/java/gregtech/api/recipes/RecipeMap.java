@@ -42,6 +42,8 @@ import java.util.*;
 import java.util.function.DoubleSupplier;
 import java.util.stream.Collectors;
 
+import static gregtech.api.util.Predicates.not;
+
 @ZenClass("mods.gregtech.recipe.RecipeMap")
 @ZenRegister
 public class RecipeMap<R extends RecipeBuilder<R>> {
@@ -174,16 +176,15 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
                 recipeItemMap.computeIfAbsent(new ItemStackKey(itemStack),k -> new ObjectOpenHashSet<>(1)).add(recipe);
             }
         }
-
         if (recipe.getInputs().size() > 0)
             recipeUniqueInputs.putIfAbsent(recipe, recipe.getUniqueInputsCount());
-
-        if (recipe.getFluidInputs().size() > 0)
-            recipeUniqueFluidInputs.putIfAbsent(recipe, recipe.getUniqueFluidInputsCount());
-
+        else { recipeUniqueInputs.putIfAbsent(recipe, 0); }
         for (FluidStack fluid : recipe.getFluidInputs()) {
             recipeFluidMap.computeIfAbsent(new FluidKey(fluid), k -> new ObjectOpenHashSet<>(1)).add(recipe);
         }
+        if (recipe.getFluidInputs().size() > 0)
+            recipeUniqueFluidInputs.putIfAbsent(recipe, recipe.getUniqueFluidInputsCount());
+        else { recipeUniqueFluidInputs.putIfAbsent(recipe, 0); }
     }
 
     public boolean removeRecipe(Recipe recipe) {
@@ -195,6 +196,8 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
             recipeItemMap.values().forEach(itemMap ->
                     itemMap.removeIf(itemRecipe -> itemRecipe == recipe));
             recipeUniqueInputs.remove(recipe,recipeUniqueInputs.getInt(recipe));
+            recipeUniqueFluidInputs.remove(recipe,recipeUniqueFluidInputs.getInt(recipe));
+
             return true;
         }
         return false;
@@ -261,7 +264,7 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
         if (minInputs > 0 && GTUtility.amountOfNonEmptyStacks(inputs) < minInputs) {
             return null;
         }
-        return findByInputs(voltage, inputs, fluidInputs, matchingMode);
+        return findByMixedInputs(voltage, inputs, fluidInputs, matchingMode);
     }
 
     @Nullable
@@ -280,37 +283,56 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
     }
 
     @Nullable
-    private Recipe findByInputs(long voltage, List<ItemStack> inputs, List<FluidStack> fluidInputs, MatchingMode matchingMode) {
-        HashSet<Recipe> iteratedRecipes = new HashSet<>();
+    private Recipe findByMixedInputs(long voltage, List<ItemStack> inputs, List<FluidStack> fluidInputs, MatchingMode matchingMode) {
+
+        HashSet<Recipe> validRecipesForInputs = new HashSet<>();
+        HashSet<Recipe> alreadyIteratedRecipes = new HashSet<>();
+        Iterator<Recipe> recipeIterator;
+
         int uniqueFluidStacks = 0;
-        for (FluidStack fluid : fluidInputs) {
-            if (fluid == null) continue;
-            uniqueFluidStacks++;
-            Collection<Recipe> recipes = recipeFluidMap.get(new FluidKey(fluid));
-            if (recipes == null) continue;
-            for (Recipe tmpRecipe : recipes) {
-                if (recipeUniqueFluidInputs.getInt(tmpRecipe) == uniqueFluidStacks) {
-                    if (iteratedRecipes.add(tmpRecipe)) {
-                        if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
-                            return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+        int uniqueStacks = 0;
+
+        // Iterates fluids and slots alternating between them. Start with fluids,
+        // since they are less common and have less variety
+        for (int slotOrTank = 0; slotOrTank < Math.max(inputs.size(), fluidInputs.size()); slotOrTank++) {
+            FluidStack fluid = null;
+            if (fluidInputs.size() > 0 && slotOrTank < fluidInputs.size())
+                fluid = fluidInputs.get(slotOrTank);
+            if (fluid != null) {
+                uniqueFluidStacks++;
+
+                validRecipesForInputs.addAll(recipeFluidMap.get(new FluidKey(fluid)).stream().filter(not(alreadyIteratedRecipes::contains)).collect(Collectors.toSet()));
+                recipeIterator = validRecipesForInputs.iterator();
+                while (recipeIterator.hasNext()) {
+                    Recipe tmpRecipe = recipeIterator.next();
+                    if (recipeUniqueFluidInputs.getInt(tmpRecipe) == uniqueFluidStacks && recipeUniqueInputs.getInt(tmpRecipe) == uniqueStacks) {
+                        if (alreadyIteratedRecipes.add(tmpRecipe)) {
+                            if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                                return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+                            }
                         }
                     }
+                    recipeIterator.remove();
                 }
             }
-        }
-        int uniqueStacks = 0;
-        for (ItemStack stack : inputs) {
-            if (stack.isEmpty()) continue;
-            uniqueStacks++;
-            Collection<Recipe> recipes = recipeItemMap.get(new ItemStackKey(stack));
-            if (recipes == null) continue;
-            for (Recipe tmpRecipe : recipes) {
-                if (recipeUniqueInputs.getInt(tmpRecipe) == uniqueStacks) {
-                    if (iteratedRecipes.add(tmpRecipe)) {
-                        if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
-                            return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+            ItemStack stack = ItemStack.EMPTY;
+            if (inputs.size() > 0 && slotOrTank < inputs.size())
+                stack = inputs.get(slotOrTank);
+            if (!stack.isEmpty()) {
+                uniqueStacks++;
+
+                validRecipesForInputs.addAll(recipeItemMap.get(new ItemStackKey(stack)).stream().filter(not(alreadyIteratedRecipes::contains)).collect(Collectors.toSet()));
+                recipeIterator = validRecipesForInputs.iterator();
+                while (recipeIterator.hasNext()) {
+                    Recipe tmpRecipe = recipeIterator.next();
+                    if (recipeUniqueInputs.getInt(tmpRecipe) == uniqueStacks && recipeUniqueFluidInputs.getInt(tmpRecipe) == uniqueFluidStacks) {
+                        if (alreadyIteratedRecipes.add(tmpRecipe)) {
+                            if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                                return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+                            }
                         }
                     }
+                    recipeIterator.remove();
                 }
             }
         }

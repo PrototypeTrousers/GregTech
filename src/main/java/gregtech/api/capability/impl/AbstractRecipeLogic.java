@@ -120,12 +120,7 @@ public abstract class AbstractRecipeLogic extends MTETrait implements IWorkable 
     }
 
     boolean shouldSearchForRecipes() {
-        return hasPowerToRun() && canWorkWithInputs() && canFitNewOutputs();
-    }
-
-    boolean hasPowerToRun() {
-        long currentEnergy = getEnergyStored();
-        return currentEnergy > lastEnergyStored;
+        return canWorkWithInputs() && canFitNewOutputs();
     }
 
     boolean canFitNewOutputs() {

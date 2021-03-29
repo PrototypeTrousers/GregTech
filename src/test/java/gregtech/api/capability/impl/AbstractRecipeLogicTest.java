@@ -112,5 +112,7 @@ public class AbstractRecipeLogicTest {
         arl.update();
         assertTrue(arl.isActive);
         assertFalse(arl.isOutputsFull);
+        assertTrue(AbstractRecipeLogic.areItemStacksEqual(arl.getOutputInventory().getStackInSlot(0),
+                new ItemStack(Blocks.STONE, 1)));
     }
 }
