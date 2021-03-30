@@ -21,10 +21,11 @@ import gregtech.api.recipes.crafttweaker.CTRecipe;
 import gregtech.api.recipes.crafttweaker.CTRecipeBuilder;
 import gregtech.api.unification.material.type.Material;
 import gregtech.api.unification.ore.OrePrefix;
-import gregtech.api.util.EnumValidationResult;
-import gregtech.api.util.GTLog;
-import gregtech.api.util.GTUtility;
-import gregtech.api.util.ValidationResult;
+import gregtech.api.util.*;
+import gregtech.api.util.ItemStackKey;
+import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectOpenHashSet;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.fluids.Fluid;
@@ -40,6 +41,8 @@ import javax.annotation.Nullable;
 import java.util.*;
 import java.util.function.DoubleSupplier;
 import java.util.stream.Collectors;
+
+import static gregtech.api.util.Predicates.not;
 
 @ZenClass("mods.gregtech.recipe.RecipeMap")
 @ZenRegister
@@ -60,7 +63,11 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
     protected TextureArea progressBarTexture;
     protected MoveType moveType;
 
-    private final Map<FluidKey, Collection<Recipe>> recipeFluidMap = new HashMap<>();
+    private final Object2ObjectOpenHashMap<FluidKey, Collection<Recipe>> recipeFluidMap = new Object2ObjectOpenHashMap<>();
+    private final Object2ObjectOpenHashMap<ItemStackKey,Collection<Recipe>> recipeItemMap = new Object2ObjectOpenHashMap<>();
+    private final Object2IntOpenHashMap<Recipe> recipeUniqueInputs = new Object2IntOpenHashMap<>();
+    private final Object2IntOpenHashMap<Recipe> recipeUniqueFluidInputs = new Object2IntOpenHashMap<>();
+
     private final Collection<Recipe> recipeList = new ArrayList<>();
 
     public RecipeMap(String unlocalizedName,
@@ -163,9 +170,21 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
         Recipe recipe = validationResult.getResult();
         recipeList.add(recipe);
 
-        for (FluidStack fluid : recipe.getFluidInputs()) {
-            recipeFluidMap.computeIfAbsent(new FluidKey(fluid), k -> new HashSet<>(1)).add(recipe);
+        for (CountableIngredient countableIngredient : recipe.getInputs()){
+            ItemStack[] stacks = countableIngredient.getIngredient().getMatchingStacks();
+            for (ItemStack itemStack : stacks){
+                recipeItemMap.computeIfAbsent(new ItemStackKey(itemStack),k -> new ObjectOpenHashSet<>(1)).add(recipe);
+            }
         }
+        if (recipe.getInputs().size() > 0)
+            recipeUniqueInputs.putIfAbsent(recipe, recipe.getUniqueInputsCount());
+        else { recipeUniqueInputs.putIfAbsent(recipe, 0); }
+        for (FluidStack fluid : recipe.getFluidInputs()) {
+            recipeFluidMap.computeIfAbsent(new FluidKey(fluid), k -> new ObjectOpenHashSet<>(1)).add(recipe);
+        }
+        if (recipe.getFluidInputs().size() > 0)
+            recipeUniqueFluidInputs.putIfAbsent(recipe, recipe.getUniqueFluidInputsCount());
+        else { recipeUniqueFluidInputs.putIfAbsent(recipe, 0); }
     }
 
     public boolean removeRecipe(Recipe recipe) {
@@ -174,6 +193,11 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
             //also iterate trough fluid mappings and remove recipe from them
             recipeFluidMap.values().forEach(fluidMap ->
                 fluidMap.removeIf(fluidRecipe -> fluidRecipe == recipe));
+            recipeItemMap.values().forEach(itemMap ->
+                    itemMap.removeIf(itemRecipe -> itemRecipe == recipe));
+            recipeUniqueInputs.remove(recipe,recipeUniqueInputs.getInt(recipe));
+            recipeUniqueFluidInputs.remove(recipe,recipeUniqueFluidInputs.getInt(recipe));
+
             return true;
         }
         return false;
@@ -240,11 +264,7 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
         if (minInputs > 0 && GTUtility.amountOfNonEmptyStacks(inputs) < minInputs) {
             return null;
         }
-        if (maxInputs > 0) {
-            return findByInputs(voltage, inputs, fluidInputs, matchingMode);
-        } else {
-            return findByFluidInputs(voltage, inputs, fluidInputs, matchingMode);
-        }
+        return findByMixedInputs(voltage, inputs, fluidInputs, matchingMode);
     }
 
     @Nullable
@@ -267,6 +287,67 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
         for (Recipe recipe : recipeList) {
             if (recipe.matches(false, inputs, fluidInputs, matchingMode)) {
                 return voltage >= recipe.getEUt() ? recipe : null;
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private Recipe findByMixedInputs(long voltage, List<ItemStack> inputs, List<FluidStack> fluidInputs, MatchingMode matchingMode) {
+
+        HashSet<Recipe> validRecipesForInputs = new HashSet<>();
+        HashSet<Recipe> alreadyIteratedRecipes = new HashSet<>();
+        Iterator<Recipe> recipeIterator;
+
+        int uniqueFluidStacks = 0;
+        int uniqueStacks = 0;
+
+        // Iterates fluids and slots alternating between them. Start with fluids,
+        // since they are less common and have less variety
+        for (int slotOrTank = 0; slotOrTank < Math.max(inputs.size(), fluidInputs.size()); slotOrTank++) {
+            FluidStack fluid = null;
+            if (fluidInputs.size() > 0 && slotOrTank < fluidInputs.size())
+                fluid = fluidInputs.get(slotOrTank);
+            if (fluid != null) {
+                uniqueFluidStacks++;
+
+                FluidKey fluidKey = new FluidKey(fluid);
+                if (recipeFluidMap.containsKey(fluidKey))
+                    validRecipesForInputs.addAll(recipeFluidMap.get(fluidKey).stream().filter(not(alreadyIteratedRecipes::contains)).collect(Collectors.toSet()));
+                recipeIterator = validRecipesForInputs.iterator();
+                while (recipeIterator.hasNext()) {
+                    Recipe tmpRecipe = recipeIterator.next();
+                    if (recipeUniqueFluidInputs.getInt(tmpRecipe) == uniqueFluidStacks && recipeUniqueInputs.getInt(tmpRecipe) == uniqueStacks) {
+                        if (alreadyIteratedRecipes.add(tmpRecipe)) {
+                            if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                                return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+                            }
+                        }
+                    }
+                    recipeIterator.remove();
+                }
+            }
+            ItemStack stack = ItemStack.EMPTY;
+            if (inputs.size() > 0 && slotOrTank < inputs.size())
+                stack = inputs.get(slotOrTank);
+            if (!stack.isEmpty()) {
+                uniqueStacks++;
+
+                ItemStackKey itemStackKey = new ItemStackKey(stack);
+                if (recipeItemMap.containsKey(itemStackKey))
+                    validRecipesForInputs.addAll(recipeItemMap.get(itemStackKey).stream().filter(not(alreadyIteratedRecipes::contains)).collect(Collectors.toSet()));
+                recipeIterator = validRecipesForInputs.iterator();
+                while (recipeIterator.hasNext()) {
+                    Recipe tmpRecipe = recipeIterator.next();
+                    if (recipeUniqueInputs.getInt(tmpRecipe) == uniqueStacks && recipeUniqueFluidInputs.getInt(tmpRecipe) == uniqueFluidStacks) {
+                        if (alreadyIteratedRecipes.add(tmpRecipe)) {
+                            if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                                return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+                            }
+                        }
+                    }
+                    recipeIterator.remove();
+                }
             }
         }
         return null;
