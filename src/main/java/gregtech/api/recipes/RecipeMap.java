@@ -170,14 +170,14 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
         Recipe recipe = validationResult.getResult();
         recipeList.add(recipe);
 
-        for (CountableIngredient countableIngredient : recipe.getInputs()){
+        if (recipe.getInputs().size() > 0) {
+            CountableIngredient countableIngredient = recipe.getInputs().get(0);
             ItemStack[] stacks = countableIngredient.getIngredient().getMatchingStacks();
             for (ItemStack itemStack : stacks){
                 recipeItemMap.computeIfAbsent(new ItemStackKey(itemStack),k -> new ObjectOpenHashSet<>(1)).add(recipe);
             }
-        }
-        if (recipe.getInputs().size() > 0)
             recipeUniqueInputs.putIfAbsent(recipe, recipe.getUniqueInputsCount());
+        }
         else { recipeUniqueInputs.putIfAbsent(recipe, 0); }
         for (FluidStack fluid : recipe.getFluidInputs()) {
             recipeFluidMap.computeIfAbsent(new FluidKey(fluid), k -> new ObjectOpenHashSet<>(1)).add(recipe);
@@ -299,51 +299,39 @@ public class RecipeMap<R extends RecipeBuilder<R>> {
         HashSet<Recipe> alreadyIteratedRecipes = new HashSet<>();
         Iterator<Recipe> recipeIterator;
 
-        int uniqueFluidStacks = 0;
-        int uniqueStacks = 0;
-
-        // Iterates fluids and slots alternating between them. Start with fluids,
-        // since they are less common and have less variety
         for (int slotOrTank = 0; slotOrTank < Math.max(inputs.size(), fluidInputs.size()); slotOrTank++) {
-            FluidStack fluid = null;
-            if (fluidInputs.size() > 0 && slotOrTank < fluidInputs.size())
-                fluid = fluidInputs.get(slotOrTank);
-            if (fluid != null) {
-                uniqueFluidStacks++;
-
-                FluidKey fluidKey = new FluidKey(fluid);
-                if (recipeFluidMap.containsKey(fluidKey))
-                    validRecipesForInputs.addAll(recipeFluidMap.get(fluidKey).stream().filter(not(alreadyIteratedRecipes::contains)).collect(Collectors.toSet()));
-                recipeIterator = validRecipesForInputs.iterator();
-                while (recipeIterator.hasNext()) {
-                    Recipe tmpRecipe = recipeIterator.next();
-                    if (recipeUniqueFluidInputs.getInt(tmpRecipe) == uniqueFluidStacks && recipeUniqueInputs.getInt(tmpRecipe) == uniqueStacks) {
-                        if (alreadyIteratedRecipes.add(tmpRecipe)) {
-                            if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
-                                return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
-                            }
-                        }
-                    }
-                    recipeIterator.remove();
-                }
-            }
             ItemStack stack = ItemStack.EMPTY;
             if (inputs.size() > 0 && slotOrTank < inputs.size())
                 stack = inputs.get(slotOrTank);
             if (!stack.isEmpty()) {
-                uniqueStacks++;
-
                 ItemStackKey itemStackKey = new ItemStackKey(stack);
                 if (recipeItemMap.containsKey(itemStackKey))
                     validRecipesForInputs.addAll(recipeItemMap.get(itemStackKey).stream().filter(not(alreadyIteratedRecipes::contains)).collect(Collectors.toSet()));
                 recipeIterator = validRecipesForInputs.iterator();
                 while (recipeIterator.hasNext()) {
                     Recipe tmpRecipe = recipeIterator.next();
-                    if (recipeUniqueInputs.getInt(tmpRecipe) == uniqueStacks && recipeUniqueFluidInputs.getInt(tmpRecipe) == uniqueFluidStacks) {
-                        if (alreadyIteratedRecipes.add(tmpRecipe)) {
-                            if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
-                                return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
-                            }
+                    if (alreadyIteratedRecipes.add(tmpRecipe)) {
+                        if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                            return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
+                        }
+                    }
+                    recipeIterator.remove();
+                }
+            }
+
+            FluidStack fluid = null;
+            if (fluidInputs.size() > 0 && slotOrTank < fluidInputs.size())
+                fluid = fluidInputs.get(slotOrTank);
+            if (fluid != null) {
+                FluidKey fluidKey = new FluidKey(fluid);
+                if (recipeFluidMap.containsKey(fluidKey))
+                    validRecipesForInputs.addAll(recipeFluidMap.get(fluidKey).stream().filter(not(alreadyIteratedRecipes::contains)).collect(Collectors.toSet()));
+                recipeIterator = validRecipesForInputs.iterator();
+                while (recipeIterator.hasNext()) {
+                    Recipe tmpRecipe = recipeIterator.next();
+                    if (alreadyIteratedRecipes.add(tmpRecipe)) {
+                        if (tmpRecipe.matches(false, inputs, fluidInputs, matchingMode)) {
+                            return voltage >= tmpRecipe.getEUt() ? tmpRecipe : null;
                         }
                     }
                     recipeIterator.remove();
